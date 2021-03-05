@@ -67,6 +67,20 @@ class KNXAddressField(ShortField):
         return ShortField.any2i(self, pkt, x)
 
 
+class KNXGroupField(ShortField):
+    def i2repr(self, pkt, x):
+        return "%d/%d/%d" % ((x >> 11) & 0x1f, (x >> 8) & 0x7, (x & 0xff))
+
+    def any2i(self, pkt, x):
+        if type(x) is str:
+            try:
+                a, b, c = map(int, x.split("/"))
+                x = (a << 11) | (b << 8) | c
+            except:
+                raise ValueError(x)
+        return ShortField.any2i(self, pkt, x)
+
+
 ### KNX BASE BLOCKS
 
 class HPAI(Packet):
@@ -98,7 +112,7 @@ class DIBDeviceInfo(Packet):
         ByteEnumField("description_type", 0x01, DESCRIPTION_TYPE_CODES),
         ByteField("knx_medium", None),  # may be replaced by a ByteEnumField ?
         ByteField("device_status", None),
-        KNXAddressField("knx_address", None),  # TODO: replace with a custom field defining a KNX address
+        KNXAddressField("knx_address", None),
         ShortField("project_installation_identifier", None),
         XBitField("device_serial_number", None, 48),
         IPField("device_multicast_address", None),
@@ -192,7 +206,7 @@ class CRD(Packet):
 class LcEMI(Packet):
     name = "L_cEMI"
     fields_desc = [
-        FieldLenField("additional_information_length", 0x00, length_of="additional_information"),
+        FieldLenField("additional_information_length", 0, fmt="B", length_of="additional_information"),  # TODO: replace with a field equals to the length info
         StrLenField("additional_information", None, length_from=lambda pkt: pkt.additional_information_length),
         # Controlfield 1 (1 byte made of 8*1 bits)
         BitEnumField("frame_type", 1, 1, {
@@ -215,8 +229,8 @@ class LcEMI(Packet):
         BitField("hop_count", 6, 3),
         BitField("extended_frame_format", 0, 4),
         KNXAddressField("source_address", None),
-        ShortField("destination_address", None),  # TODO: add custom field to handle KNX destination addresses
-        FieldLenField("npdu_length", 0x01, length_of="data"),
+        KNXGroupField("destination_address", "1/2/3"),
+        FieldLenField("npdu_length", 0x01, fmt="B", length_of="data"),
         # TPCI and APCI (2 byte made of 1+1+4+4+6 bits)
         BitEnumField("packet_type", 0, 1, {
             0: "data"
@@ -231,6 +245,7 @@ class LcEMI(Packet):
         BitField("reserved3", 0, 6),
         # TODO: test that data is correctly used from "npdu_length"
         StrLenField("data", None, length_from=lambda pkt: pkt.information_length)
+
     ]
 
 
@@ -401,7 +416,7 @@ class KNXConfigurationRequest(Packet):  # TODO: test with different cEMI payload
         ByteField("communication_channel_id", 0x01),
         ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
         ByteField("reserved", None),
-        PacketField("cEMI", CEMI(), CEMI)
+        PacketField("cemi", CEMI(), CEMI)
     ]
 
 
@@ -421,7 +436,8 @@ class KNXTunnelingRequest(Packet):  # TODO: test with different cEMI payloads
         ByteField("structure_length", 0x04),  # TODO: replace by a field that measures the packet length
         ByteField("communication_channel_id", 0x01),
         ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
-        PacketField("cEMI", CEMI(), CEMI)
+        ByteField("reserved", None),
+        PacketField("cemi", CEMI(), CEMI)
     ]
 
 
