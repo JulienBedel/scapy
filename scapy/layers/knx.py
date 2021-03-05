@@ -1,24 +1,34 @@
 from scapy.fields import PacketField, MultipleTypeField, ByteField, XByteField, ShortEnumField, ShortField, \
-    ByteEnumField, IPField, StrFixedLenField, MACField, XBitField, PacketListField
+    ByteEnumField, IPField, StrFixedLenField, MACField, XBitField, PacketListField, IntField
 from scapy.layers.inet import UDP
 from scapy.packet import Packet, bind_layers, Padding, bind_bottom_up
 
 # KNX CODES
 
-SERVICE_IDENTIFIERS = {
+SERVICE_IDENTIFIER_CODES = {
     0x0201: "SEARCH_REQUEST",
     0x0202: "SEARCH_RESPONSE",
     0x0203: "DESCRIPTION_REQUEST",
-    0x0204: "DESCRIPTION_RESPONSE"
+    0x0204: "DESCRIPTION_RESPONSE",
+    0x0205: "CONNECT_REQUEST",
+    0x0206: "CONNECT_RESPONSE",
+    0x0207: "CONNECTIONSTATE_REQUEST",
+    0x0208: "CONNECTIONSTATE_RESPONSE"
 }
 
 HOST_PROTOCOL_CODES = {
     0x01: "IPV4_UDP"
 }
 
-DESCRIPTION_TYPE = {
+DESCRIPTION_TYPE_CODES = {
     0x01: "DEVICE_INFO",
     0x02: "SUPP_SVC_FAMILIES"
+}
+
+# uses only one code collection for connection type, differentiates between CRI and CRD tunneling in classes (!= BOF)
+CONNECTION_TYPE_CODES = {
+    0x03: "DEVICE_MANAGEMENT_CONNECTION",
+    0x04: "TUNNELING_CONNECTION"
 }
 
 
@@ -67,7 +77,7 @@ class DIBDeviceInfo(Packet):
     name = "DIB: DEVICE_INFO"
     fields_desc = [
         ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
-        ByteEnumField("description_type", 0x01, DESCRIPTION_TYPE),
+        ByteEnumField("description_type", 0x01, DESCRIPTION_TYPE_CODES),
         ByteField("knx_medium", None),  # may be replaced by a ByteEnumField ?
         ByteField("device_status", None),
         KNXAddressField("knx_address", None),  # TODO: replace with a custom field defining a KNX address
@@ -83,8 +93,77 @@ class DIBSuppSvcFamilies(Packet):
     name = "DIB: SUPP_SVC_FAMILIES"
     fields_desc = [
         ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
-        ByteEnumField("description_type", 0x02, DESCRIPTION_TYPE),
+        ByteEnumField("description_type", 0x02, DESCRIPTION_TYPE_CODES),
+        # can the service family number be 0 ?
         PacketListField("service_family", ServiceFamily(), ServiceFamily, length_from=lambda pkt: pkt.structure_length)
+    ]
+
+
+class DeviceManagementConnection(Packet):
+    name = "Device Management Connection"
+    fields_desc = [
+        IntField("ip_address_1", None),
+        ByteField("port_1", None),
+        IntField("ip_address_2", None),
+        ByteField("port_2", None)
+    ]
+
+
+class TunnelingConnection(Packet):
+    name = "Tunneling Connection"
+    fields_desc = [
+        ByteField("knx_layer", 0x02),
+        ByteField("reserved", None)
+    ]
+
+
+class CRDTunnelingConnection(Packet):
+    name = "CRD Tunneling Connection"
+    fields_desc = [
+        KNXAddressField("knx_individual_address", None)
+    ]
+
+
+class CRI(Packet):
+    name = "CRI (Connection Request Information)"
+    fields_desc = [
+        ByteField("structure_length", 0x00),
+        ByteEnumField("connection_type", 0x03, {
+            0x03: "DEVICE_MANAGEMENT_CONNECTION",
+            0x04: "TUNNELING_CONNECTION"
+        }),
+        MultipleTypeField(
+            [
+                # TODO: see if better way than "pkt.structure_length > 0x02" to check if a body is present
+                (PacketField("connection_data", DeviceManagementConnection(), DeviceManagementConnection),
+                 lambda pkt: pkt.connection_type == 0x03 and pkt.structure_length > 0x02),
+                (PacketField("connection_data", TunnelingConnection(), TunnelingConnection),
+                 lambda pkt: pkt.connection_type == 0x04 and pkt.structure_length > 0x02)
+            ],
+            PacketField("connection_data", None, ByteField)  # if no identifier matches then return no connection_data
+        )
+
+    ]
+
+
+class CRD(Packet):
+    name = "CRD (Connection Response Data)"
+    fields_desc = [
+        ByteField("structure_length", 0x00),
+        ByteEnumField("connection_type", 0x03, {
+            0x03: "DEVICE_MANAGEMENT_CONNECTION",
+            0x04: "TUNNELING_CONNECTION"
+        }),
+        MultipleTypeField(
+            [
+                # TODO: see if better way than "pkt.structure_length > 0x02" to check if a body is present
+                (PacketField("connection_data", DeviceManagementConnection(), DeviceManagementConnection),
+                 lambda pkt: pkt.connection_type == 0x03 and pkt.structure_length > 0x02),
+                (PacketField("connection_data", CRDTunnelingConnection(), CRDTunnelingConnection),
+                 lambda pkt: pkt.connection_type == 0x04 and pkt.structure_length > 0x02)
+            ],
+            PacketField("connection_data", None, ByteField)  # if no identifier matches then return no connection_data
+        )
     ]
 
 
@@ -123,6 +202,42 @@ class KNXDescriptionResponse(Packet):
     ]
 
 
+class KNXConnectRequest(Packet):   # TODO: test with complex CRI (no pcap yet)
+    name = "CONNECT_REQUEST"
+    fields_desc = [
+        PacketField("control_endpoint", HPAI(), HPAI),
+        PacketField("data_endpoint", HPAI(), HPAI),
+        PacketField("connection_request_information", CRI(), CRI)
+    ]
+
+
+class KNXConnectResponse(Packet):  # TODO: test with complex CRD (no pcap yet)
+    name = "CONNECT_RESPONSE"
+    fields_desc = [
+        ByteField("communication_channel_id", None),
+        ByteField("status", None),  # TODO: add ByteEnumField with status list (see KNX specifications)
+        PacketField("data_endpoint", HPAI(), HPAI),
+        PacketField("connection_response_data_block", CRD(), CRD)
+    ]
+
+
+class KNXConnectionstateRequest(Packet):  # TODO: test (no pcap yet)
+    name = "CONNECTIONSTATE_REQUEST"
+    fields_desc = [
+        ByteField("communication_channel_id", None),
+        ByteField("reserved", None),
+        PacketField("control_endpoint", HPAI(), HPAI)
+    ]
+
+
+class KNXConnectionstateResponse(Packet):  # TODO: test (no pcap yet)
+    name = "CONNECTIONSTATE_RESPONSE"
+    fields_desc = [
+        ByteField("communication_channel_id", None),
+        ByteField("status", 0x00)
+    ]
+
+
 # KNX FRAME
 
 class KNXHeader(Packet):
@@ -130,7 +245,7 @@ class KNXHeader(Packet):
     fields_desc = [
         ByteField("header_length", None),  # TODO: replace by a field that measures the packet length
         XByteField("protocol_version", 0x10),
-        ShortEnumField("service_identifier", None, SERVICE_IDENTIFIERS),
+        ShortEnumField("service_identifier", None, SERVICE_IDENTIFIER_CODES),
         ShortField("total_length", None)  # TODO: replace by a field that measures the total frame length
     ]
 
@@ -150,7 +265,16 @@ class KNXnetIP(Packet):
                 (PacketField("body", KNXDescriptionRequest(), KNXDescriptionRequest),
                  lambda pkt: pkt.header.service_identifier == 0x0203),
                 (PacketField("body", KNXDescriptionResponse(), KNXDescriptionResponse),
-                 lambda pkt: pkt.header.service_identifier == 0x0204)
+                 lambda pkt: pkt.header.service_identifier == 0x0204),
+                (PacketField("body", KNXConnectRequest(), KNXConnectRequest),
+                 lambda pkt: pkt.header.service_identifier == 0x0205),
+                (PacketField("body", KNXConnectResponse(), KNXConnectResponse),
+                 lambda pkt: pkt.header.service_identifier == 0x0206),
+                (PacketField("body", KNXConnectionstateRequest(), KNXConnectionstateRequest),
+                 lambda pkt: pkt.header.service_identifier == 0x0207),
+                (PacketField("body", KNXConnectionstateResponse(), KNXConnectionstateResponse),
+                 lambda pkt: pkt.header.service_identifier == 0x0208)
+
             ],
             PacketField("body", None, None)
         )
@@ -172,10 +296,19 @@ bind_layers(HPAI, Padding)
 bind_layers(ServiceFamily, Padding)
 bind_layers(DIBDeviceInfo, Padding)
 bind_layers(DIBSuppSvcFamilies, Padding)
+bind_layers(DeviceManagementConnection, Padding)
+bind_layers(TunnelingConnection, Padding)
+bind_layers(CRDTunnelingConnection, Padding)
+bind_layers(CRI, Padding)
+bind_layers(CRD, Padding)
 
 bind_layers(KNXSearchRequest, Padding)
 bind_layers(KNXSearchResponse, Padding)
 bind_layers(KNXDescriptionRequest, Padding)
 bind_layers(KNXDescriptionResponse, Padding)
+bind_layers(KNXConnectRequest, Padding)
+bind_layers(KNXConnectResponse, Padding)
+bind_layers(KNXConnectionstateRequest, Padding)
+bind_layers(KNXConnectionstateResponse, Padding)
 
 bind_layers(KNXHeader, Padding)
