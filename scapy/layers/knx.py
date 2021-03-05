@@ -22,6 +22,25 @@ DESCRIPTION_TYPE = {
 }
 
 
+# KNX SPECIFIC FIELDS
+
+class KNXAddressField(ShortField):
+    def i2repr(self, pkt, x):
+        if x is None:
+            return None
+        else:
+            return "%d.%d.%d" % ((x >> 12) & 0xf, (x >> 8) & 0xf, (x & 0xff))
+
+    def any2i(self, pkt, x):
+        if type(x) is str:
+            try:
+                a, b, c = map(int, x.split("."))
+                x = (a << 12) | (b << 8) | c
+            except:
+                raise ValueError(x)
+        return ShortField.any2i(self, pkt, x)
+
+
 # KNX BASE BLOCKS
 
 class HPAI(Packet):
@@ -51,7 +70,7 @@ class DIBDeviceInfo(Packet):
         ByteEnumField("description_type", 0x01, DESCRIPTION_TYPE),
         ByteField("knx_medium", None),  # may be replaced by a ByteEnumField ?
         ByteField("device_status", None),
-        ShortField("knx_address", None),    # TODO: replace with a custom field defining a KNX address
+        KNXAddressField("knx_address", None),  # TODO: replace with a custom field defining a KNX address
         ShortField("project_installation_identifier", None),
         XBitField("device_serial_number", None, 48),
         IPField("device_multicast_address", None),
@@ -131,7 +150,7 @@ class KNXnetIP(Packet):
                 (PacketField("body", KNXDescriptionRequest(), KNXDescriptionRequest),
                  lambda pkt: pkt.header.service_identifier == 0x0203),
                 (PacketField("body", KNXDescriptionResponse(), KNXDescriptionResponse),
-                 lambda pkt: pkt.header.service_identifier == 0x0204),
+                 lambda pkt: pkt.header.service_identifier == 0x0204)
             ],
             PacketField("body", None, None)
         )
