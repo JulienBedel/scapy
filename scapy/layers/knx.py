@@ -19,6 +19,8 @@ SERVICE_IDENTIFIER_CODES = {
     0x020A: "DISCONNECT_RESPONSE",
     0x0310: "CONFIGURATION_REQUEST",
     0x0311: "CONFIGURATION_ACK",
+    0x0420: "TUNNELING_REQUEST",
+    0x0421: "TUNNELING_ACK"
 }
 
 HOST_PROTOCOL_CODES = {
@@ -413,6 +415,26 @@ class KNXConfigurationACK(Packet):  # TODO: test with different cEMI payloads
     ]
 
 
+class KNXTunnelingRequest(Packet):  # TODO: test with different cEMI payloads
+    name = "TUNNELING_REQUEST"
+    fields_desc = [
+        ByteField("structure_length", 0x04),  # TODO: replace by a field that measures the packet length
+        ByteField("communication_channel_id", 0x01),
+        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        PacketField("cEMI", CEMI(), CEMI)
+    ]
+
+
+class KNXTunnelingACK(Packet):  # TODO: test with different cEMI payloads
+    name = "TUNNELING_ACK"
+    fields_desc = [
+        ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
+        ByteField("communication_channel_id", 0x01),
+        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        ByteField("status", None)  # TODO: add ByteEnumField with status list (see KNX specifications)
+    ]
+
+
 ### KNX FRAME
 
 class KNXHeader(Packet):
@@ -456,8 +478,11 @@ class KNXnetIP(Packet):
                 (PacketField("body", KNXConfigurationRequest(), KNXConfigurationRequest),
                  lambda pkt: pkt.header.service_identifier == 0x0310),
                 (PacketField("body", KNXConfigurationACK(), KNXConfigurationACK),
-                 lambda pkt: pkt.header.service_identifier == 0x0311)
-
+                 lambda pkt: pkt.header.service_identifier == 0x0311),
+                (PacketField("body", KNXTunnelingRequest(), KNXTunnelingRequest),
+                 lambda pkt: pkt.header.service_identifier == 0x0420),
+                (PacketField("body", KNXTunnelingACK(), KNXTunnelingACK),
+                 lambda pkt: pkt.header.service_identifier == 0x0421)
             ],
             PacketField("body", None, None)  # if no identifier matches then return an empty body
         )
@@ -506,5 +531,7 @@ bind_layers(KNXDisconnectRequest, Padding)
 bind_layers(KNXDisconnectResponse, Padding)
 bind_layers(KNXConfigurationRequest, Padding)
 bind_layers(KNXConfigurationACK, Padding)
+bind_layers(KNXTunnelingRequest, Padding)
+bind_layers(KNXTunnelingACK, Padding)
 
 bind_layers(KNXHeader, Padding)
