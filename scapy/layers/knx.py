@@ -1,5 +1,5 @@
 from scapy.fields import PacketField, MultipleTypeField, ByteField, XByteField, ShortEnumField, ShortField, XIntField, \
-    ByteEnumField
+    ByteEnumField, IPField
 from scapy.layers.inet import UDP
 from scapy.packet import Packet, bind_layers, Padding, bind_bottom_up
 
@@ -21,7 +21,7 @@ class HPAI(Packet):
     fields_desc = [
         ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
         ByteEnumField("host_protocol_code", 0x01, HOST_PROTOCOL_CODES),
-        XIntField("ip_address", None),  # TODO: replace by a (custom) IP address field
+        IPField("ip_address", None),
         ShortField("ip_port", None)
     ]
 
@@ -56,7 +56,7 @@ class KNXnetIP(Packet):
         MultipleTypeField(
             [
                 (PacketField("body", KNXDescriptionRequest(), KNXDescriptionRequest),
-                 lambda pkt: pkt.knx_header.service_identifier == 0x0203),
+                 lambda pkt: pkt.header.service_identifier == 0x0203),
             ],
             PacketField("body", None, None)
         )
