@@ -13,7 +13,9 @@ SERVICE_IDENTIFIER_CODES = {
     0x0205: "CONNECT_REQUEST",
     0x0206: "CONNECT_RESPONSE",
     0x0207: "CONNECTIONSTATE_REQUEST",
-    0x0208: "CONNECTIONSTATE_RESPONSE"
+    0x0208: "CONNECTIONSTATE_RESPONSE",
+    0x0209: "DISCONNECT_REQUEST",
+    0x020A: "DISCONNECT_RESPONSE"
 }
 
 HOST_PROTOCOL_CODES = {
@@ -57,7 +59,7 @@ class HPAI(Packet):
     name = "HPAI"
     fields_desc = [
         ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
-        ByteEnumField("host_protocol_code", 0x01, HOST_PROTOCOL_CODES),
+        ByteEnumField("host_protocol", 0x01, HOST_PROTOCOL_CODES),
         IPField("ip_address", None),
         ShortField("ip_port", None)
     ]
@@ -202,7 +204,7 @@ class KNXDescriptionResponse(Packet):
     ]
 
 
-class KNXConnectRequest(Packet):   # TODO: test with complex CRI (no pcap yet)
+class KNXConnectRequest(Packet):  # TODO: test with complex CRI (no pcap yet)
     name = "CONNECT_REQUEST"
     fields_desc = [
         PacketField("control_endpoint", HPAI(), HPAI),
@@ -234,7 +236,24 @@ class KNXConnectionstateResponse(Packet):  # TODO: test (no pcap yet)
     name = "CONNECTIONSTATE_RESPONSE"
     fields_desc = [
         ByteField("communication_channel_id", None),
-        ByteField("status", 0x00)
+        ByteField("status", 0x00)  # TODO: add ByteEnumField with status list (see KNX specifications)
+    ]
+
+
+class KNXDisconnectRequest(Packet):
+    name = "DISCONNECT_REQUEST"
+    fields_desc = [
+        ByteField("communication_channel_id", 0x01),
+        ByteField("reserved", None),
+        PacketField("control_endpoint", HPAI(), HPAI)
+    ]
+
+
+class KNXDisconnectResponse(Packet):
+    name = "DISCONNECT_RESPONSE"
+    fields_desc = [
+        ByteField("communication_channel_id", None),
+        ByteField("status", 0x00)  # TODO: add ByteEnumField with status list (see KNX specifications)
     ]
 
 
@@ -273,7 +292,11 @@ class KNXnetIP(Packet):
                 (PacketField("body", KNXConnectionstateRequest(), KNXConnectionstateRequest),
                  lambda pkt: pkt.header.service_identifier == 0x0207),
                 (PacketField("body", KNXConnectionstateResponse(), KNXConnectionstateResponse),
-                 lambda pkt: pkt.header.service_identifier == 0x0208)
+                 lambda pkt: pkt.header.service_identifier == 0x0208),
+                (PacketField("body", KNXDisconnectRequest(), KNXDisconnectRequest),
+                 lambda pkt: pkt.header.service_identifier == 0x0209),
+                (PacketField("body", KNXDisconnectResponse(), KNXDisconnectResponse),
+                 lambda pkt: pkt.header.service_identifier == 0x020A)
 
             ],
             PacketField("body", None, None)
@@ -310,5 +333,7 @@ bind_layers(KNXConnectRequest, Padding)
 bind_layers(KNXConnectResponse, Padding)
 bind_layers(KNXConnectionstateRequest, Padding)
 bind_layers(KNXConnectionstateResponse, Padding)
+bind_layers(KNXDisconnectRequest, Padding)
+bind_layers(KNXDisconnectResponse, Padding)
 
 bind_layers(KNXHeader, Padding)
