@@ -1,9 +1,10 @@
 from scapy.fields import PacketField, MultipleTypeField, ByteField, XByteField, ShortEnumField, ShortField, \
-    ByteEnumField, IPField, StrFixedLenField, MACField, XBitField, PacketListField, IntField
+    ByteEnumField, IPField, StrFixedLenField, MACField, XBitField, PacketListField, IntField, FieldLenField, \
+    StrLenField, BitEnumField, BitField
 from scapy.layers.inet import UDP
 from scapy.packet import Packet, bind_layers, Padding, bind_bottom_up
 
-# KNX CODES
+### KNX CODES
 
 SERVICE_IDENTIFIER_CODES = {
     0x0201: "SEARCH_REQUEST",
@@ -15,7 +16,9 @@ SERVICE_IDENTIFIER_CODES = {
     0x0207: "CONNECTIONSTATE_REQUEST",
     0x0208: "CONNECTIONSTATE_RESPONSE",
     0x0209: "DISCONNECT_REQUEST",
-    0x020A: "DISCONNECT_RESPONSE"
+    0x020A: "DISCONNECT_RESPONSE",
+    0x0310: "CONFIGURATION_REQUEST",
+    0x0311: "CONFIGURATION_ACK",
 }
 
 HOST_PROTOCOL_CODES = {
@@ -33,8 +36,17 @@ CONNECTION_TYPE_CODES = {
     0x04: "TUNNELING_CONNECTION"
 }
 
+MESSAGE_CODES = {
+    0x11: "L_Data.req",
+    0x2e: "L_Data.con",
+    0xFC: "PropRead.req",
+    0xFB: "PropRead.con",
+    0xF6: "PropWrite.req",
+    0xF5: "PropWrite.con"
+}
 
-# KNX SPECIFIC FIELDS
+
+### KNX SPECIFIC FIELDS
 
 class KNXAddressField(ShortField):
     def i2repr(self, pkt, x):
@@ -53,7 +65,7 @@ class KNXAddressField(ShortField):
         return ShortField.any2i(self, pkt, x)
 
 
-# KNX BASE BLOCKS
+### KNX BASE BLOCKS
 
 class HPAI(Packet):
     name = "HPAI"
@@ -64,6 +76,8 @@ class HPAI(Packet):
         ShortField("ip_port", None)
     ]
 
+
+# DIB blocks
 
 class ServiceFamily(Packet):  # may better suit as a field ?
     name = "Service Family"
@@ -100,6 +114,8 @@ class DIBSuppSvcFamilies(Packet):
         PacketListField("service_family", ServiceFamily(), ServiceFamily, length_from=lambda pkt: pkt.structure_length)
     ]
 
+
+# CRI and CRD blocks
 
 class DeviceManagementConnection(Packet):
     name = "Device Management Connection"
@@ -169,7 +185,126 @@ class CRD(Packet):
     ]
 
 
-# KNX SERVICES
+# cEMI blocks
+
+class LcEMI(Packet):
+    name = "L_cEMI"
+    fields_desc = [
+        FieldLenField("additional_information_length", 0x00, length_of="additional_information"),
+        StrLenField("additional_information", None, length_from=lambda pkt: pkt.additional_information_length),
+        # Controlfield 1 (1 byte made of 8*1 bits)
+        BitEnumField("frame_type", 1, 1, {
+            1: "standard"
+        }),
+        BitField("reserved", 0, 1),
+        BitField("repeat_on_error", 1, 1),
+        BitEnumField("broadcast_type", 1, 1, {
+            1: "domain"
+        }),
+        BitEnumField("priority", 3, 2, {
+            3: "low"
+        }),
+        BitField("ack_request", 0, 1),
+        BitField("confirmation_error", 0, 1),
+        # Controlfield 2 (1 byte made of 1+3+4 bits)
+        BitEnumField("address_type", 1, 1, {
+            1: "group"
+        }),
+        BitField("hop_count", 6, 3),
+        BitField("extended_frame_format", 0, 4),
+        KNXAddressField("source_address", None),
+        ShortField("destination_address", None),  # TODO: add custom field to handle KNX destination addresses
+        FieldLenField("npdu_length", 0x01, length_of="data"),
+        # TPCI and APCI (2 byte made of 1+1+4+4+6 bits)
+        BitEnumField("packet_type", 0, 1, {
+            0: "data"
+        }),
+        BitEnumField("sequence_type", 0, 1, {
+            0: "unnumbered"
+        }),
+        BitField("reserved2", 0, 4),
+        BitEnumField("acpi", 2, 4, {
+            2: "GroupValueWrite"
+        }),
+        BitField("reserved3", 0, 6),
+        # TODO: test that data is correctly used from "npdu_length"
+        StrLenField("data", None, length_from=lambda pkt: pkt.information_length)
+    ]
+
+
+class DPcEMI(Packet):
+    name = "DP_cEMI"
+    fields_desc = [
+        # TODO: see if best representation is str or hex
+        ShortField("object_type", None),
+        ByteField("object_instance", None),
+        ByteField("property_id", None),
+        BitField("number_of_elements", None, 4),
+        BitField("start_index", None, 12)
+    ]
+
+
+class LDataReq(Packet):
+    name = "L_Data.req"
+    fields_desc = [
+        PacketField("L_Data.req", LcEMI(), LcEMI)
+    ]
+
+
+class LDataCon(Packet):
+    name = "L_Data.con"
+    fields_desc = [
+        PacketField("L_Data.con", LcEMI(), LcEMI)
+    ]
+
+
+class PropReadReq(Packet):
+    name = "PropRead.req"
+    fields_desc = [
+        PacketField("PropRead.req", DPcEMI(), DPcEMI)
+    ]
+
+
+class PropReadCon(Packet):
+    name = "PropRead.con"
+    fields_desc = [
+        PacketField("PropRead.con", DPcEMI(), DPcEMI)
+    ]
+
+
+class PropWriteReq(Packet):
+    name = "PropWrite.req"
+    fields_desc = [
+        PacketField("PropWrite.req", DPcEMI(), DPcEMI)
+    ]
+
+
+class PropWriteCon(Packet):
+    name = "PropWrite.con"
+    fields_desc = [
+        PacketField("PropWrite.con", DPcEMI(), DPcEMI)
+    ]
+
+
+class CEMI(Packet):
+    name = "CEMI"
+    fields_desc = [
+        ByteEnumField("message_code", None, MESSAGE_CODES),
+        MultipleTypeField(
+            [
+                (PacketField("cemi_data", LDataReq(), LDataReq), lambda pkt: pkt.message_code == 0x11),
+                (PacketField("cemi_data", LDataCon(), LDataCon), lambda pkt: pkt.message_code == 0x2e),
+                (PacketField("cemi_data", PropReadReq(), PropReadReq), lambda pkt: pkt.message_code == 0xFC),
+                (PacketField("cemi_data", PropReadCon(), PropReadCon), lambda pkt: pkt.message_code == 0xFB),
+                (PacketField("cemi_data", PropWriteReq(), PropWriteReq), lambda pkt: pkt.message_code == 0xF6),
+                (PacketField("cemi_data", PropWriteCon(), PropWriteCon), lambda pkt: pkt.message_code == 0xF5)
+            ],
+            PacketField("cemi_data", None, ByteField)  # if no identifier matches then return no cemi_data
+        )
+    ]
+
+
+### KNX SERVICES
 
 class KNXSearchRequest(Packet):  # TODO: test (no pcap yet)
     name = "SEARCH_REQUEST",
@@ -257,7 +392,28 @@ class KNXDisconnectResponse(Packet):
     ]
 
 
-# KNX FRAME
+class KNXConfigurationRequest(Packet):  # TODO: test with different cEMI payloads
+    name = "CONFIGURATION_REQUEST"
+    fields_desc = [
+        ByteField("structure_length", 0x04),  # TODO: replace by a field that measures the packet length
+        ByteField("communication_channel_id", 0x01),
+        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        ByteField("reserved", None),
+        PacketField("cEMI", CEMI(), CEMI)
+    ]
+
+
+class KNXConfigurationACK(Packet):  # TODO: test with different cEMI payloads
+    name = "CONFIGURATION_ACK"
+    fields_desc = [
+        ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
+        ByteField("communication_channel_id", 0x01),
+        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        ByteField("status", None)  # TODO: add ByteEnumField with status list (see KNX specifications)
+    ]
+
+
+### KNX FRAME
 
 class KNXHeader(Packet):
     name = "Header"
@@ -296,16 +452,20 @@ class KNXnetIP(Packet):
                 (PacketField("body", KNXDisconnectRequest(), KNXDisconnectRequest),
                  lambda pkt: pkt.header.service_identifier == 0x0209),
                 (PacketField("body", KNXDisconnectResponse(), KNXDisconnectResponse),
-                 lambda pkt: pkt.header.service_identifier == 0x020A)
+                 lambda pkt: pkt.header.service_identifier == 0x020A),
+                (PacketField("body", KNXConfigurationRequest(), KNXConfigurationRequest),
+                 lambda pkt: pkt.header.service_identifier == 0x0310),
+                (PacketField("body", KNXConfigurationACK(), KNXConfigurationACK),
+                 lambda pkt: pkt.header.service_identifier == 0x0311)
 
             ],
-            PacketField("body", None, None)
+            PacketField("body", None, None)  # if no identifier matches then return an empty body
         )
 
     ]
 
 
-# LAYERS BINDING
+### LAYERS BINDING
 
 bind_layers(UDP, KNXnetIP, dport=3671)
 bind_bottom_up(UDP, KNXnetIP, sport=3671)
@@ -324,6 +484,15 @@ bind_layers(TunnelingConnection, Padding)
 bind_layers(CRDTunnelingConnection, Padding)
 bind_layers(CRI, Padding)
 bind_layers(CRD, Padding)
+bind_layers(LcEMI, Padding)
+bind_layers(DPcEMI, Padding)
+bind_layers(LDataReq, Padding)
+bind_layers(LDataCon, Padding)
+bind_layers(PropReadReq, Padding)
+bind_layers(PropReadCon, Padding)
+bind_layers(PropWriteReq, Padding)
+bind_layers(PropWriteCon, Padding)
+bind_layers(CEMI, Padding)
 
 bind_layers(KNXSearchRequest, Padding)
 bind_layers(KNXSearchResponse, Padding)
@@ -335,5 +504,7 @@ bind_layers(KNXConnectionstateRequest, Padding)
 bind_layers(KNXConnectionstateResponse, Padding)
 bind_layers(KNXDisconnectRequest, Padding)
 bind_layers(KNXDisconnectResponse, Padding)
+bind_layers(KNXConfigurationRequest, Padding)
+bind_layers(KNXConfigurationACK, Padding)
 
 bind_layers(KNXHeader, Padding)
