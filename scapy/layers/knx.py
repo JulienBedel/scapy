@@ -83,6 +83,13 @@ class KNXGroupField(ShortField):
 
 ### KNX BASE BLOCKS
 
+class Empty(Packet):
+    name = "Empty Block"
+    fields_desc = [
+
+    ]
+
+
 class HPAI(Packet):
     name = "HPAI"
     fields_desc = [
@@ -500,8 +507,7 @@ class KNXnetIP(Packet):
                 (PacketField("body", KNXTunnelingACK(), KNXTunnelingACK),
                  lambda pkt: pkt.header.service_identifier == 0x0421)
             ],
-            # TODO: replace with empty Packet
-            PacketField("body", None, None)  # if no identifier matches then return an empty body
+            PacketField("body", Empty(), Empty)  # if no identifier matches then return an empty body
         )
 
     ]
