@@ -32,7 +32,7 @@ DESCRIPTION_TYPE_CODES = {
     0x02: "SUPP_SVC_FAMILIES"
 }
 
-# uses only one code collection for connection type, differentiates between CRI and CRD tunneling in classes (!= BOF)
+# uses only 1 code collection for connection type, differentiates between CRI and CRD tunneling in classes (!= BOF)
 CONNECTION_TYPE_CODES = {
     0x03: "DEVICE_MANAGEMENT_CONNECTION",
     0x04: "TUNNELING_CONNECTION"
@@ -117,7 +117,7 @@ class DIBDeviceInfo(Packet):
     fields_desc = [
         ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
         ByteEnumField("description_type", 0x01, DESCRIPTION_TYPE_CODES),
-        ByteField("knx_medium", None),  # may be replaced by a ByteEnumField ?
+        ByteField("knx_medium", None),  # may be replaced by a ByteEnumField, see specs ?
         ByteField("device_status", None),
         KNXAddressField("knx_address", None),
         ShortField("project_installation_identifier", None),
@@ -168,19 +168,16 @@ class CRI(Packet):
     name = "CRI (Connection Request Information)"
     fields_desc = [
         ByteField("structure_length", 0x00),
-        ByteEnumField("connection_type", 0x03, {
-            0x03: "DEVICE_MANAGEMENT_CONNECTION",
-            0x04: "TUNNELING_CONNECTION"
-        }),
+        ByteEnumField("connection_type", 0x03, CONNECTION_TYPE_CODES),
         MultipleTypeField(
             [
-                # TODO: see if better way than "pkt.structure_length > 0x02" to check if a body is present
+                # see in KNX specs if better than "pkt.structure_length > 0x02" to check if a body is present
                 (PacketField("connection_data", DeviceManagementConnection(), DeviceManagementConnection),
                  lambda pkt: pkt.connection_type == 0x03 and pkt.structure_length > 0x02),
                 (PacketField("connection_data", TunnelingConnection(), TunnelingConnection),
                  lambda pkt: pkt.connection_type == 0x04 and pkt.structure_length > 0x02)
             ],
-            PacketField("connection_data", None, ByteField)  # if no identifier matches then return no connection_data
+            PacketField("connection_data", None, ByteField)
         )
 
     ]
@@ -190,19 +187,16 @@ class CRD(Packet):
     name = "CRD (Connection Response Data)"
     fields_desc = [
         ByteField("structure_length", 0x00),
-        ByteEnumField("connection_type", 0x03, {
-            0x03: "DEVICE_MANAGEMENT_CONNECTION",
-            0x04: "TUNNELING_CONNECTION"
-        }),
+        ByteEnumField("connection_type", 0x03, CONNECTION_TYPE_CODES),
         MultipleTypeField(
             [
-                # TODO: see if better way than "pkt.structure_length > 0x02" to check if a body is present
+                # see if better way than "pkt.structure_length > 0x02" to check if a body is present
                 (PacketField("connection_data", DeviceManagementConnection(), DeviceManagementConnection),
                  lambda pkt: pkt.connection_type == 0x03 and pkt.structure_length > 0x02),
                 (PacketField("connection_data", CRDTunnelingConnection(), CRDTunnelingConnection),
                  lambda pkt: pkt.connection_type == 0x04 and pkt.structure_length > 0x02)
             ],
-            PacketField("connection_data", None, ByteField)  # if no identifier matches then return no connection_data
+            PacketField("connection_data", None, ByteField)
         )
     ]
 
@@ -213,7 +207,6 @@ class LcEMI(Packet):
     name = "L_cEMI"
     fields_desc = [
         FieldLenField("additional_information_length", 0, fmt="B", length_of="additional_information"),
-        # TODO: replace with a field equals to the length info
         StrLenField("additional_information", None, length_from=lambda pkt: pkt.additional_information_length),
         # Controlfield 1 (1 byte made of 8*1 bits)
         BitEnumField("frame_type", 1, 1, {
@@ -251,7 +244,7 @@ class LcEMI(Packet):
         }),
         BitField("reserved3", 0, 6),
         # TODO: test that data is correctly used from "npdu_length"
-        StrLenField("data", None, length_from=lambda pkt: pkt.information_length)
+        StrLenField("data", None, length_from=lambda pkt: pkt.npdu_length)
 
     ]
 
@@ -259,7 +252,7 @@ class LcEMI(Packet):
 class DPcEMI(Packet):
     name = "DP_cEMI"
     fields_desc = [
-        # TODO: see if best representation is str or hex
+        # see if best representation is str or hex
         ShortField("object_type", None),
         ByteField("object_instance", None),
         ByteField("property_id", None),
@@ -323,21 +316,21 @@ class CEMI(Packet):
                 (PacketField("cemi_data", PropWriteReq(), PropWriteReq), lambda pkt: pkt.message_code == 0xF6),
                 (PacketField("cemi_data", PropWriteCon(), PropWriteCon), lambda pkt: pkt.message_code == 0xF5)
             ],
-            PacketField("cemi_data", None, ByteField)  # if no identifier matches then return no cemi_data
+            PacketField("cemi_data", None, ByteField)
         )
     ]
 
 
 ### KNX SERVICES
 
-class KNXSearchRequest(Packet):  # TODO: test (no pcap yet)
+class KNXSearchRequest(Packet):  # TODO: test
     name = "SEARCH_REQUEST",
     fields_desc = [
         PacketField("discovery_endpoint", HPAI(), HPAI)
     ]
 
 
-class KNXSearchResponse(Packet):  # TODO: test (no pcap yet)
+class KNXSearchResponse(Packet):  # TODO: test
     name = "SEARCH_RESPONSE",
     fields_desc = [
         PacketField("control_endpoint", HPAI(), HPAI),
@@ -358,12 +351,12 @@ class KNXDescriptionResponse(Packet):
     fields_desc = [
         PacketField("device_info", DIBDeviceInfo(), DIBDeviceInfo),
         PacketField("supported_service_families", DIBSuppSvcFamilies(), DIBSuppSvcFamilies)
-        # TODO: optional field in KNX specs, add conditions to take it into account
+        # TODO: this is an optional field in KNX specs, add conditions to take it into account
         # PacketField("other_device_info", DIBDeviceInfo(), DIBDeviceInfo)
     ]
 
 
-class KNXConnectRequest(Packet):  # TODO: test with complex CRI (no pcap yet)
+class KNXConnectRequest(Packet):  # TODO: test
     name = "CONNECT_REQUEST"
     fields_desc = [
         PacketField("control_endpoint", HPAI(), HPAI),
@@ -372,7 +365,7 @@ class KNXConnectRequest(Packet):  # TODO: test with complex CRI (no pcap yet)
     ]
 
 
-class KNXConnectResponse(Packet):  # TODO: test with complex CRD (no pcap yet)
+class KNXConnectResponse(Packet):  # TODO: test
     name = "CONNECT_RESPONSE"
     fields_desc = [
         ByteField("communication_channel_id", None),
@@ -381,8 +374,9 @@ class KNXConnectResponse(Packet):  # TODO: test with complex CRD (no pcap yet)
         PacketField("connection_response_data_block", CRD(), CRD)
     ]
 
+# TODO: handle frame networking (send/receive)
 
-class KNXConnectionstateRequest(Packet):  # TODO: test (no pcap yet)
+class KNXConnectionstateRequest(Packet):  # TODO: test
     name = "CONNECTIONSTATE_REQUEST"
     fields_desc = [
         ByteField("communication_channel_id", None),
@@ -391,7 +385,7 @@ class KNXConnectionstateRequest(Packet):  # TODO: test (no pcap yet)
     ]
 
 
-class KNXConnectionstateResponse(Packet):  # TODO: test (no pcap yet)
+class KNXConnectionstateResponse(Packet):  # TODO: test
     name = "CONNECTIONSTATE_RESPONSE"
     fields_desc = [
         ByteField("communication_channel_id", None),
@@ -416,44 +410,44 @@ class KNXDisconnectResponse(Packet):
     ]
 
 
-class KNXConfigurationRequest(Packet):  # TODO: test with different cEMI payloads
+class KNXConfigurationRequest(Packet):  # TODO: test
     name = "CONFIGURATION_REQUEST"
     fields_desc = [
         ByteField("structure_length", 0x04),  # TODO: replace by a field that measures the packet length
         ByteField("communication_channel_id", 0x01),
-        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        ByteField("sequence_counter", None),
         ByteField("reserved", None),
         PacketField("cemi", CEMI(), CEMI)
     ]
 
 
-class KNXConfigurationACK(Packet):  # TODO: test with different cEMI payloads
+class KNXConfigurationACK(Packet):  # TODO: test
     name = "CONFIGURATION_ACK"
     fields_desc = [
         ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
         ByteField("communication_channel_id", 0x01),
-        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        ByteField("sequence_counter", None),
         ByteField("status", None)  # TODO: add ByteEnumField with status list (see KNX specifications)
     ]
 
 
-class KNXTunnelingRequest(Packet):  # TODO: test with different cEMI payloads
+class KNXTunnelingRequest(Packet):  # TODO: test
     name = "TUNNELING_REQUEST"
     fields_desc = [
         ByteField("structure_length", 0x04),  # TODO: replace by a field that measures the packet length
         ByteField("communication_channel_id", 0x01),
-        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        ByteField("sequence_counter", None),
         ByteField("reserved", None),
         PacketField("cemi", CEMI(), CEMI)
     ]
 
 
-class KNXTunnelingACK(Packet):  # TODO: test with different cEMI payloads
+class KNXTunnelingACK(Packet):  # TODO: test
     name = "TUNNELING_ACK"
     fields_desc = [
         ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
         ByteField("communication_channel_id", 0x01),
-        ByteField("sequence_counter", None),  # TODO: see where to actually handle KNX networking
+        ByteField("sequence_counter", None),
         ByteField("status", None)  # TODO: add ByteEnumField with status list (see KNX specifications)
     ]
 
