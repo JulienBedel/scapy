@@ -1,6 +1,6 @@
 from scapy.fields import PacketField, MultipleTypeField, ByteField, XByteField, ShortEnumField, ShortField, \
     ByteEnumField, IPField, StrFixedLenField, MACField, XBitField, PacketListField, IntField, FieldLenField, \
-    StrLenField, BitEnumField, BitField
+    StrLenField, BitEnumField, BitField, ConditionalField
 from scapy.layers.inet import UDP
 from scapy.packet import Packet, bind_layers, Padding, bind_bottom_up
 
@@ -95,7 +95,7 @@ class HPAI(Packet):
 
 # DIB blocks
 
-class ServiceFamily(Packet):  # may better suit as a field ?
+class ServiceFamily(Packet):
     name = "Service Family"
     fields_desc = [
         ByteField("id", None),
@@ -124,10 +124,9 @@ class DIBDeviceInfo(Packet):
 class DIBSuppSvcFamilies(Packet):
     name = "DIB: SUPP_SVC_FAMILIES"
     fields_desc = [
-        ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", 0x02),  # TODO: replace by a field that measures the packet length
         ByteEnumField("description_type", 0x02, DESCRIPTION_TYPE_CODES),
-        # can the service family number be 0 ?
-        PacketListField("service_family", ServiceFamily(), ServiceFamily, length_from=lambda pkt: pkt.structure_length)
+        ConditionalField(PacketListField("service_family", ServiceFamily(), ServiceFamily, length_from=lambda pkt: pkt.structure_length - 0x02), lambda pkt: pkt.structure_length > 0x02)
     ]
 
 
@@ -206,7 +205,8 @@ class CRD(Packet):
 class LcEMI(Packet):
     name = "L_cEMI"
     fields_desc = [
-        FieldLenField("additional_information_length", 0, fmt="B", length_of="additional_information"),  # TODO: replace with a field equals to the length info
+        FieldLenField("additional_information_length", 0, fmt="B", length_of="additional_information"),
+        # TODO: replace with a field equals to the length info
         StrLenField("additional_information", None, length_from=lambda pkt: pkt.additional_information_length),
         # Controlfield 1 (1 byte made of 8*1 bits)
         BitEnumField("frame_type", 1, 1, {
@@ -500,6 +500,7 @@ class KNXnetIP(Packet):
                 (PacketField("body", KNXTunnelingACK(), KNXTunnelingACK),
                  lambda pkt: pkt.header.service_identifier == 0x0421)
             ],
+            # TODO: replace with empty Packet
             PacketField("body", None, None)  # if no identifier matches then return an empty body
         )
 
