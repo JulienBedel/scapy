@@ -457,12 +457,16 @@ class KNXTunnelingACK(Packet):  # TODO: test
 class KNXHeader(Packet):
     name = "Header"
     fields_desc = [
-        ByteField("header_length", None),  # TODO: replace by a field that measures the packet length
+        PacketField("header_length", None),
         XByteField("protocol_version", 0x10),
         ShortEnumField("service_identifier", None, SERVICE_IDENTIFIER_CODES),
-        ShortField("total_length", None)  # TODO: replace by a field that measures the total frame length
+        ShortField("total_length", None)
     ]
 
+    # possible to do this with a dedicated field instead of a post_build ??
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p
 
 class KNXnetIP(Packet):
     name = "KNXnet/IP"
@@ -505,6 +509,11 @@ class KNXnetIP(Packet):
         )
 
     ]
+
+    # not possible with a dedicated field (PacketLenField) because inside a "child" PacketField
+    def post_build(self, p, pay):
+        p = p[:4] + (len(p)).to_bytes(2, byteorder='big') + p[6:]
+        return p
 
 
 ### LAYERS BINDING
