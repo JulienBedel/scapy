@@ -457,7 +457,7 @@ class KNXTunnelingACK(Packet):  # TODO: test
 class KNXHeader(Packet):
     name = "Header"
     fields_desc = [
-        PacketField("header_length", None),
+        ByteField("header_length", None),
         XByteField("protocol_version", 0x10),
         ShortEnumField("service_identifier", None, SERVICE_IDENTIFIER_CODES),
         ShortField("total_length", None)
