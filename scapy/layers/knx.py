@@ -93,12 +93,15 @@ class Empty(Packet):
 class HPAI(Packet):
     name = "HPAI"
     fields_desc = [
-        ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", None),
         ByteEnumField("host_protocol", 0x01, HOST_PROTOCOL_CODES),
         IPField("ip_address", None),
         ShortField("ip_port", None)
     ]
 
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p + pay
 
 # DIB blocks
 
@@ -115,7 +118,7 @@ class ServiceFamily(Packet):
 class DIBDeviceInfo(Packet):
     name = "DIB: DEVICE_INFO"
     fields_desc = [
-        ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", None),
         ByteEnumField("description_type", 0x01, DESCRIPTION_TYPE_CODES),
         ByteField("knx_medium", None),  # may be replaced by a ByteEnumField, see specs ?
         ByteField("device_status", None),
@@ -127,15 +130,22 @@ class DIBDeviceInfo(Packet):
         StrFixedLenField("device_friendly_name", None, 30)
     ]
 
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p + pay
+
 
 class DIBSuppSvcFamilies(Packet):
     name = "DIB: SUPP_SVC_FAMILIES"
     fields_desc = [
-        ByteField("structure_length", 0x02),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", 0x02),
         ByteEnumField("description_type", 0x02, DESCRIPTION_TYPE_CODES),
         ConditionalField(PacketListField("service_family", ServiceFamily(), ServiceFamily, length_from=lambda pkt: pkt.structure_length - 0x02), lambda pkt: pkt.structure_length > 0x02)
     ]
 
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p + pay
 
 # CRI and CRD blocks
 
@@ -167,7 +177,7 @@ class CRDTunnelingConnection(Packet):
 class CRI(Packet):
     name = "CRI (Connection Request Information)"
     fields_desc = [
-        ByteField("structure_length", 0x00),
+        ByteField("structure_length", 0x00), # TODO: add field/post_build computing the structure length
         ByteEnumField("connection_type", 0x03, CONNECTION_TYPE_CODES),
         MultipleTypeField(
             [
@@ -186,7 +196,7 @@ class CRI(Packet):
 class CRD(Packet):
     name = "CRD (Connection Response Data)"
     fields_desc = [
-        ByteField("structure_length", 0x00),
+        ByteField("structure_length", 0x00), # TODO: add field/post_build computing the structure length
         ByteEnumField("connection_type", 0x03, CONNECTION_TYPE_CODES),
         MultipleTypeField(
             [
@@ -413,43 +423,59 @@ class KNXDisconnectResponse(Packet):
 class KNXConfigurationRequest(Packet):  # TODO: test
     name = "CONFIGURATION_REQUEST"
     fields_desc = [
-        ByteField("structure_length", 0x04),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", 0x04),
         ByteField("communication_channel_id", 0x01),
         ByteField("sequence_counter", None),
         ByteField("reserved", None),
         PacketField("cemi", CEMI(), CEMI)
     ]
+
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p + pay
 
 
 class KNXConfigurationACK(Packet):  # TODO: test
     name = "CONFIGURATION_ACK"
     fields_desc = [
-        ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", None),
         ByteField("communication_channel_id", 0x01),
         ByteField("sequence_counter", None),
         ByteField("status", None)  # TODO: add ByteEnumField with status list (see KNX specifications)
     ]
 
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p + pay
+
 
 class KNXTunnelingRequest(Packet):  # TODO: test
     name = "TUNNELING_REQUEST"
     fields_desc = [
-        ByteField("structure_length", 0x04),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", 0x04),
         ByteField("communication_channel_id", 0x01),
         ByteField("sequence_counter", None),
         ByteField("reserved", None),
         PacketField("cemi", CEMI(), CEMI)
     ]
 
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p + pay
+
 
 class KNXTunnelingACK(Packet):  # TODO: test
     name = "TUNNELING_ACK"
     fields_desc = [
-        ByteField("structure_length", None),  # TODO: replace by a field that measures the packet length
+        ByteField("structure_length", None),
         ByteField("communication_channel_id", 0x01),
         ByteField("sequence_counter", None),
         ByteField("status", None)  # TODO: add ByteEnumField with status list (see KNX specifications)
     ]
+
+    def post_build(self, p, pay):
+        p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
+        return p + pay
 
 
 ### KNX FRAME
@@ -466,7 +492,7 @@ class KNXHeader(Packet):
     # possible to do this with a dedicated field instead of a post_build ??
     def post_build(self, p, pay):
         p = (len(p)).to_bytes(1, byteorder='big') + p[1:]
-        return p
+        return p + pay
 
 class KNXnetIP(Packet):
     name = "KNXnet/IP"
@@ -513,7 +539,7 @@ class KNXnetIP(Packet):
     # not possible with a dedicated field (PacketLenField) because inside a "child" PacketField
     def post_build(self, p, pay):
         p = p[:4] + (len(p)).to_bytes(2, byteorder='big') + p[6:]
-        return p
+        return p + pay
 
 
 ### LAYERS BINDING
